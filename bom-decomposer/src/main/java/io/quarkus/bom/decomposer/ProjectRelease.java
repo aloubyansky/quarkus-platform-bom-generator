@@ -47,6 +47,10 @@ public class ProjectRelease {
             return deps.containsKey(key);
         }
 
+        public Collection<ProjectDependency> dependencies() {
+            return deps.values();
+        }
+
         public ProjectRelease build() {
             ProjectRelease.this.deps = Collections.unmodifiableList(new ArrayList<>(deps.values()));
             return ProjectRelease.this;
