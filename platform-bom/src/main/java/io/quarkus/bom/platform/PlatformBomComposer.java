@@ -65,7 +65,7 @@ public class PlatformBomComposer implements DecomposedBomTransformer, Decomposed
     private final ExtensionCoordsFilterFactory extCoordsFilterFactory;
     private ArtifactResolver resolver;
 
-    private Collection<ReleaseVersion> versionsInQuarkusBom = new HashSet<>();
+    private Collection<ReleaseVersion> fixedReleaseVersions = new HashSet<>();
     private LinkedHashMap<String, ReleaseId> preferredVersions;
     private Map<ReleaseOrigin, Collection<ProjectRelease>> fixedReleases = new HashMap<>();
 
@@ -198,9 +198,15 @@ public class PlatformBomComposer implements DecomposedBomTransformer, Decomposed
                 ProjectDependency platformDep = depsAlignedWithQuarkusBom.get(dep.key());
                 if (platformDep == null) {
                     platformDep = externalExtensionDeps.get(dep.key());
-                }
-                if (platformDep == null) {
-                    throw new IllegalStateException("Failed to locate " + dep.key() + " in the generated platform BOM");
+                    if (platformDep == null) {
+                        throw new IllegalStateException("Failed to locate " + dep.key() + " in the generated platform BOM");
+                    }
+                } else if (!dep.dependency().getExclusions().isEmpty()) {
+                    // preserve custom exclusions
+                    Dependency memberDep = dep.dependency();
+                    platformDep = ProjectDependency.create(platformDep.releaseId(),
+                            new Dependency(platformDep.dependency().getArtifact(), memberDep.getScope(),
+                                    memberDep.getOptional(), memberDep.getExclusions()));
                 }
                 releaseBuilders.computeIfAbsent(platformDep.releaseId(), id -> ProjectRelease.builder(id)).add(platformDep);
             });
@@ -608,10 +614,10 @@ public class PlatformBomComposer implements DecomposedBomTransformer, Decomposed
     @Override
     public boolean enterReleaseOrigin(ReleaseOrigin releaseOrigin, int versions) {
         preferredVersions = null;
-        versionsInQuarkusBom.clear();
+        fixedReleaseVersions.clear();
         final Collection<ProjectRelease> releases = fixedReleases.get(releaseOrigin);
         if (releases != null) {
-            releases.forEach(r -> versionsInQuarkusBom.add(r.id().version()));
+            releases.forEach(r -> fixedReleaseVersions.add(r.id().version()));
         }
         return true;
     }
@@ -622,7 +628,7 @@ public class PlatformBomComposer implements DecomposedBomTransformer, Decomposed
 
     @Override
     public void visitProjectRelease(ProjectRelease release) throws BomDecomposerException {
-        if (versionsInQuarkusBom.isEmpty()) {
+        if (fixedReleaseVersions.isEmpty()) {
             final ProjectRelease.Builder releaseBuilder = extReleaseCollector.getOrCreateReleaseBuilder(release.id(),
                     memberBeingProcessed);
             for (ProjectDependency dep : release.dependencies()) {
@@ -630,7 +636,7 @@ public class PlatformBomComposer implements DecomposedBomTransformer, Decomposed
             }
             return;
         }
-        if (versionsInQuarkusBom.contains(release.id().version())) {
+        if (fixedReleaseVersions.contains(release.id().version())) {
             for (ProjectDependency dep : release.dependencies()) {
                 final ProjectDependency quarkusBomDep = depsAlignedWithQuarkusBom.putIfAbsent(dep.key(), dep);
                 if (quarkusBomDep != null) {
