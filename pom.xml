@@ -61,6 +61,7 @@
   </properties>
   <modules>
     <module>bom-decomposer</module>
+    <module>buildoscope</module>
     <module>domino</module>
     <module>maven-plugin</module>
     <module>platform-bom</module>
@@ -223,12 +224,6 @@
         <plugin>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>3.0.0-M5</version>
-          <configuration>
-            <systemPropertyVariables>
-              <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
-              <maven.home>${maven.home}</maven.home>
-            </systemPropertyVariables>
-          </configuration>
         </plugin>
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
