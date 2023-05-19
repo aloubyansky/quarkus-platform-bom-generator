@@ -1,6 +1,6 @@
 package io.quarkus.buildoscope;
 
-public enum FileBuildStatus {
+public enum FileStatus {
     CREATED,
     MODIFIED,
     REMOVED

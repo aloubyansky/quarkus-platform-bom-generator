@@ -14,7 +14,7 @@ public interface FileBuildRecord {
 
     Collection<FileHash> getDerivedFrom();
 
-    FileBuildStatus getStatus();
+    FileStatus getStatus();
 
     default Mutable mutable() {
         return new FileBuildRecordImpl.Builder(this);
@@ -42,7 +42,7 @@ public interface FileBuildRecord {
 
         Mutable setDerivedFrom(Collection<FileHash> derivedFrom);
 
-        Mutable setStatus(FileBuildStatus status);
+        Mutable setStatus(FileStatus status);
 
         FileBuildRecord build();
 

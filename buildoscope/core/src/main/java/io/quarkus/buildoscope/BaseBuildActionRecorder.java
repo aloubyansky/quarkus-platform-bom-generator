@@ -15,14 +15,14 @@ public abstract class BaseBuildActionRecorder implements BuildActionRecorder {
             if (fileAfter == null) {
                 var fileRecord = FileBuildRecord.builder()
                         .setActor(ctx.getActor())
-                        .setStatus(FileBuildStatus.REMOVED)
+                        .setStatus(FileStatus.REMOVED)
                         .setFileHash(fileBefore.getValue())
                         .build();
                 records.add(fileRecord);
             } else if (!fileBefore.getValue().getHash().equals(fileAfter.getHash())) {
                 var fileRecord = FileBuildRecord.builder()
                         .setActor(ctx.getActor())
-                        .setStatus(FileBuildStatus.MODIFIED)
+                        .setStatus(FileStatus.MODIFIED)
                         .setFileHash(fileAfter);
                 setDerivedFrom(fileRecord);
                 records.add(fileRecord.build());
@@ -31,7 +31,7 @@ public abstract class BaseBuildActionRecorder implements BuildActionRecorder {
         for (FileHash created : mapAfter.values()) {
             var fileRecord = FileBuildRecord.builder()
                     .setActor(ctx.getActor())
-                    .setStatus(FileBuildStatus.CREATED)
+                    .setStatus(FileStatus.CREATED)
                     .setFileHash(created);
             setDerivedFrom(fileRecord);
             records.add(fileRecord.build());

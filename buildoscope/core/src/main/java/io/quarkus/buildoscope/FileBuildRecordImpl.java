@@ -11,7 +11,7 @@ public class FileBuildRecordImpl implements FileBuildRecord {
     private final FileHash fileHash;
     private final BuildActor actor;
     private final Collection<FileHash> derivedFrom;
-    private final FileBuildStatus status;
+    private final FileStatus status;
 
     public FileBuildRecordImpl(FileBuildRecord other) {
         fileHash = other.getFileHash();
@@ -36,7 +36,7 @@ public class FileBuildRecordImpl implements FileBuildRecord {
     }
 
     @Override
-    public FileBuildStatus getStatus() {
+    public FileStatus getStatus() {
         return status;
     }
 
@@ -68,7 +68,7 @@ public class FileBuildRecordImpl implements FileBuildRecord {
         private FileHash fileHash;
         private BuildActor actor;
         private Collection<FileHash> derivedFrom = List.of();
-        private FileBuildStatus status;
+        private FileStatus status;
 
         Builder() {
         }
@@ -96,7 +96,7 @@ public class FileBuildRecordImpl implements FileBuildRecord {
         }
 
         @Override
-        public FileBuildStatus getStatus() {
+        public FileStatus getStatus() {
             return status;
         }
 
@@ -119,7 +119,7 @@ public class FileBuildRecordImpl implements FileBuildRecord {
         }
 
         @Override
-        public Mutable setStatus(FileBuildStatus status) {
+        public Mutable setStatus(FileStatus status) {
             this.status = status;
             return this;
         }
