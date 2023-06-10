@@ -28,9 +28,15 @@ public class SbomGeneratingDependencyVisitor implements DependencyTreeVisitor {
 
     public SbomGeneratingDependencyVisitor(MavenArtifactResolver resolver, Path outputFile, ProjectDependencyConfig config,
             boolean enableSbomTransformers) {
+        this(resolver, outputFile, config, enableSbomTransformers, false);
+    }
+
+    public SbomGeneratingDependencyVisitor(MavenArtifactResolver resolver, Path outputFile, ProjectDependencyConfig config,
+            boolean enableSbomTransformers, boolean recordDependenciesAsAssemblies) {
         sbomGenerator = SbomGenerator.builder()
                 .setArtifactResolver(resolver)
-                .setOutputFile(outputFile);
+                .setOutputFile(outputFile)
+                .setRecordDependenciesAsAssemblies(recordDependenciesAsAssemblies);
         if (config.getProductInfo() != null) {
             sbomGenerator.setProductInfo(config.getProductInfo());
         }
@@ -39,10 +45,16 @@ public class SbomGeneratingDependencyVisitor implements DependencyTreeVisitor {
 
     public SbomGeneratingDependencyVisitor(MavenArtifactResolver resolver, Path outputFile, ProductInfo productInfo,
             boolean enableSbomTransformers) {
+        this(resolver, outputFile, productInfo, enableSbomTransformers, false);
+    }
+
+    public SbomGeneratingDependencyVisitor(MavenArtifactResolver resolver, Path outputFile, ProductInfo productInfo,
+            boolean enableSbomTransformers, boolean recordDepsAsAssemblies) {
         sbomGenerator = SbomGenerator.builder()
                 .setArtifactResolver(resolver)
                 .setOutputFile(outputFile)
-                .setProductInfo(productInfo);
+                .setProductInfo(productInfo)
+                .setRecordDependenciesAsAssemblies(recordDepsAsAssemblies);
         config = null;
     }
 

@@ -196,6 +196,9 @@ public class DependenciesToBuildMojo extends AbstractMojo {
     @Parameter(required = false, property = "flatManifest")
     boolean flatManifest;
 
+    @Parameter(required = false, property = "assemblies")
+    boolean assemblies;
+
     @Parameter(required = false, property = "redhatSupported")
     boolean redhatSupported;
 
@@ -333,7 +336,7 @@ public class DependenciesToBuildMojo extends AbstractMojo {
             var sbomGenerator = new SbomGeneratingDependencyVisitor(resolver,
                     outputFile == null ? null : outputFile.toPath(),
                     dependencyConfig,
-                    true);
+                    true, assemblies);
             depsResolver.addDependencyTreeVisitor(sbomGenerator).build().resolveDependencies();
         } else if (flatManifest) {
             depsResolver.build().consumeSorted(ManifestGenerator.builder()

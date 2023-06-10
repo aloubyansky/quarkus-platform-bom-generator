@@ -699,6 +699,10 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
                 if (sbomConfig.isSupportedExtensionsOnly()) {
                     config.addChild(textDomElement("redhatSupported", "true"));
                 }
+
+                if (sbomConfig.isAssemblies()) {
+                    config.addChild(textDomElement("assemblies", "true"));
+                }
             }
 
             if (!forSbom || sbomConfig != null && sbomConfig.isApplyCompleteDependenciesToBuildConfig()) {

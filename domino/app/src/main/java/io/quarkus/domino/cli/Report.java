@@ -23,6 +23,10 @@ public class Report extends BaseDepsToBuildCommand {
             "--enable-sbom-transformers" }, description = "Apply SBOM transformers found on the classpath", defaultValue = "false")
     public boolean enableSbomTransformers;
 
+    @CommandLine.Option(names = {
+            "--assemblies" }, description = "Record component dependencies in an SBOM as assemblies", defaultValue = "false")
+    public boolean assemblies;
+
     @Override
     protected Path getConfigDir() {
         if (manifest) {
@@ -54,7 +58,8 @@ public class Report extends BaseDepsToBuildCommand {
         if (manifest) {
             resolverBuilder.addDependencyTreeVisitor(
                     new SbomGeneratingDependencyVisitor(getArtifactResolver(),
-                            outputFile, resolverBuilder.getDependencyConfig().getProductInfo(), enableSbomTransformers));
+                            outputFile, resolverBuilder.getDependencyConfig().getProductInfo(), enableSbomTransformers,
+                            assemblies));
         }
     }
 

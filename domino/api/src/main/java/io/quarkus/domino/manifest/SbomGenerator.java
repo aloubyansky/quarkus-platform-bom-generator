@@ -89,6 +89,11 @@ public class SbomGenerator {
             return this;
         }
 
+        public Builder setRecordDependenciesAsAssemblies(boolean assemblies) {
+            SbomGenerator.this.assemblies = assemblies;
+            return this;
+        }
+
         public SbomGenerator build() {
             ensureNotBuilt();
 
@@ -123,6 +128,7 @@ public class SbomGenerator {
     private ProductInfo productInfo;
     private boolean enableTransformers;
     private List<VisitedComponent> topComponents;
+    private boolean assemblies;
 
     private Bom bom;
     private Set<String> addedBomRefs;
@@ -175,6 +181,41 @@ public class SbomGenerator {
         if (!addedBomRefs.add(visited.getBomRef())) {
             return;
         }
+        final Component c = getComponent(visited);
+        bom.addComponent(c);
+
+        List<VisitedComponent> dependencies = visited.getDependencies();
+        if (!dependencies.isEmpty()) {
+            if (assemblies) {
+                final List<Component> nested = new ArrayList<>(dependencies.size());
+                for (VisitedComponent child : sortAlphabetically(dependencies)) {
+                    nested.add(getNested(child));
+                }
+                c.setComponents(nested);
+            } else {
+                final Dependency d = new Dependency(c.getBomRef());
+                for (VisitedComponent child : sortAlphabetically(dependencies)) {
+                    d.addDependency(new Dependency(child.getBomRef()));
+                    addComponent(child);
+                }
+                bom.addDependency(d);
+            }
+        }
+    }
+
+    private Component getNested(VisitedComponent visited) {
+        final Component c = getComponent(visited);
+        if (!visited.getDependencies().isEmpty()) {
+            final List<Component> nested = new ArrayList<>(visited.getDependencies().size());
+            for (VisitedComponent child : sortAlphabetically(visited.getDependencies())) {
+                nested.add(getNested(child));
+            }
+            c.setComponents(nested);
+        }
+        return c;
+    }
+
+    private Component getComponent(VisitedComponent visited) {
         final Model model = effectiveModelResolver.resolveEffectiveModel(visited.getArtifactCoords(),
                 visited.getRepositories());
         final Component c = new Component();
@@ -195,23 +236,13 @@ public class SbomGenerator {
             ManifestGenerator.addProperty(props, "package:language", "java");
         }
         c.setProperties(props);
-        c.setType(Component.Type.LIBRARY);
+        c.setType(Type.LIBRARY);
 
         // fix distribution and publisher for components built by RH
         if (RhVersionPattern.isRhVersion(c.getVersion())) {
             PncSbomTransformer.addMrrc(c);
         }
-        bom.addComponent(c);
-
-        List<VisitedComponent> dependencies = visited.getDependencies();
-        if (!dependencies.isEmpty()) {
-            final Dependency d = new Dependency(c.getBomRef());
-            for (VisitedComponent child : sortAlphabetically(dependencies)) {
-                d.addDependency(new Dependency(child.getBomRef()));
-                addComponent(child);
-            }
-            bom.addDependency(d);
-        }
+        return c;
     }
 
     private void addProductInfo(Metadata metadata) {

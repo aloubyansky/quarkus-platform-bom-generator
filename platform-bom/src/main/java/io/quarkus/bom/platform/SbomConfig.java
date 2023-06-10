@@ -16,6 +16,7 @@ public class SbomConfig {
     private ProductConfig product;
     private boolean supportedExtensionsOnly;
     private String applyDependenciesToBuildConfig;
+    private boolean assemblies;
 
     public ProductConfig getProductInfo() {
         return product;
@@ -50,6 +51,14 @@ public class SbomConfig {
     public boolean isApplyDependenciesToBuildInclusions() {
         ensureValidDepsToBuildConfig(applyDependenciesToBuildConfig);
         return applyDependenciesToBuildConfig == null || INCLUSIONS.equalsIgnoreCase(applyDependenciesToBuildConfig);
+    }
+
+    public boolean isAssemblies() {
+        return assemblies;
+    }
+
+    public void setAssemblies(boolean assemblies) {
+        this.assemblies = assemblies;
     }
 
     private static void ensureValidDepsToBuildConfig(String applyDependenciesToBuildConfig) {
