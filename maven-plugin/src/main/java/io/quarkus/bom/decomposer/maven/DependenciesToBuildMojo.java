@@ -4,6 +4,7 @@ import io.quarkus.bom.decomposer.maven.platformgen.PlatformConfig;
 import io.quarkus.bom.platform.ProjectDependencyFilterConfig;
 import io.quarkus.bom.platform.SbomConfig;
 import io.quarkus.bootstrap.BootstrapConstants;
+import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.domino.ProjectDependencyConfig;
@@ -39,7 +40,6 @@ import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.graph.DependencyNode;
-import org.eclipse.aether.impl.RemoteRepositoryManager;
 import org.eclipse.aether.repository.RemoteRepository;
 
 /**
@@ -52,9 +52,6 @@ import org.eclipse.aether.repository.RemoteRepository;
  */
 @Mojo(name = "dependencies-to-build", threadSafe = true, requiresProject = false)
 public class DependenciesToBuildMojo extends AbstractMojo {
-
-    @Component
-    RemoteRepositoryManager remoteRepoManager;
 
     @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true, required = true)
     List<RemoteRepository> repos;
@@ -202,6 +199,9 @@ public class DependenciesToBuildMojo extends AbstractMojo {
     @Parameter(required = false)
     SbomConfig.ProductConfig productInfo;
 
+    @Component
+    QuarkusWorkspaceProvider workspaceProvider;
+
     private Set<ArtifactCoords> targetBomConstraints;
 
     private MavenArtifactResolver resolver;
@@ -224,17 +224,11 @@ public class DependenciesToBuildMojo extends AbstractMojo {
                 targetBomCoords.getVersion());
         debug("Quarkus extension catalog %s", catalogCoords);
 
-        try {
-            resolver = MavenArtifactResolver.builder()
-                    .setRemoteRepositories(repos)
-                    .setRemoteRepositoryManager(remoteRepoManager)
-                    .setWorkspaceDiscovery(projectFile != null)
-                    .setPreferPomsFromWorkspace(projectFile != null)
-                    .setCurrentProject(projectFile == null ? null : projectFile.toString())
-                    .build();
-        } catch (BootstrapMavenException e) {
-            throw new MojoExecutionException("Failed to initialize Maven artifact resolver", e);
-        }
+        resolver = workspaceProvider.createArtifactResolver(BootstrapMavenContext.config()
+                .setRemoteRepositories(repos)
+                .setWorkspaceDiscovery(projectFile != null)
+                .setPreferPomsFromWorkspace(projectFile != null)
+                .setCurrentProject(projectFile == null ? null : projectFile.toString()));
 
         final List<Dependency> targetBomManagedDeps = getBomConstraints(targetBomCoords);
         targetBomConstraints = toCoordsSet(targetBomManagedDeps);

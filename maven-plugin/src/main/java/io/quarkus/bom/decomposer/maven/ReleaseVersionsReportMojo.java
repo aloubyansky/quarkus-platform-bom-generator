@@ -7,6 +7,7 @@ import io.quarkus.bom.decomposer.DecomposedBomHtmlReportGenerator;
 import io.quarkus.bom.decomposer.DecomposedBomHtmlReportGenerator.HtmlWriterBuilder;
 import io.quarkus.bom.decomposer.DecomposedBomReleasesLogger;
 import io.quarkus.bom.resolver.ArtifactResolverProvider;
+import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import java.util.List;
 import org.apache.maven.plugin.AbstractMojo;
@@ -62,6 +63,9 @@ public class ReleaseVersionsReportMojo extends AbstractMojo {
     @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
     private RepositorySystemSession repoSession;
 
+    @Component
+    QuarkusWorkspaceProvider workspaceProvider;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         if (skip) {
@@ -76,16 +80,15 @@ public class ReleaseVersionsReportMojo extends AbstractMojo {
 
     private void decompose() throws Exception {
         final MojoMessageWriter msgWriter = new MojoMessageWriter(getLog());
+        final MavenArtifactResolver resolver = workspaceProvider.createArtifactResolver(
+                BootstrapMavenContext.config()
+                        .setRemoteRepositories(repos)
+                        .setRemoteRepositories(repos)
+                        .setPreferPomsFromWorkspace(true)
+                        .setCurrentProject(project.getFile() == null ? null : project.getFile().getAbsolutePath()));
+
         final BomDecomposerConfig config = BomDecomposer.config()
-                .mavenArtifactResolver(ArtifactResolverProvider.get(
-                        MavenArtifactResolver.builder()
-                                .setRepositorySystem(repoSystem)
-                                .setRepositorySystemSession(repoSession)
-                                .setRemoteRepositories(repos)
-                                .setRemoteRepositoryManager(remoteRepoManager)
-                                .setPreferPomsFromWorkspace(true)
-                                .setCurrentProject(project.getFile() == null ? null : project.getFile().getAbsolutePath())
-                                .build()))
+                .mavenArtifactResolver(ArtifactResolverProvider.get(resolver))
                 .logger(msgWriter)
                 .debug()
                 .bomArtifact(project.getGroupId(), project.getArtifactId(), project.getVersion());

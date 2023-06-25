@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -82,7 +81,7 @@ public class AttachPluginMojo extends AbstractMojo {
         }
 
         final Artifact mainArtifact = new DefaultArtifact(originalCoords.getGroupId(), originalCoords.getArtifactId(), null,
-                "jar", originalCoords.getVersion());
+                ArtifactCoords.TYPE_JAR, originalCoords.getVersion());
         final Path mainJar = resolve(mainArtifact);
         final Path classesDir = targetDir.resolve("classes");
         try {
@@ -94,7 +93,7 @@ public class AttachPluginMojo extends AbstractMojo {
         IoUtils.recursiveDelete(classesDir.resolve("META-INF").resolve("maven"));
 
         final Path originalPom = resolve(new DefaultArtifact(originalCoords.getGroupId(), originalCoords.getArtifactId(), null,
-                "pom", originalCoords.getVersion()));
+                ArtifactCoords.TYPE_POM, originalCoords.getVersion()));
         final Model generatedModel = project.getOriginalModel().clone();
         generatedModel.setGroupId(targetCoords.getGroupId());
         generatedModel.setArtifactId(targetCoords.getArtifactId());
@@ -118,7 +117,7 @@ public class AttachPluginMojo extends AbstractMojo {
             if (!a.getClassifier().isEmpty()) {
                 modelDep.setClassifier(a.getClassifier());
             }
-            if (!a.getExtension().isEmpty() && !"jar".equals(a.getExtension())) {
+            if (!a.getExtension().isEmpty() && !ArtifactCoords.TYPE_JAR.equals(a.getExtension())) {
                 modelDep.setType(a.getExtension());
             }
             if (!managedKeys.contains(ArtifactKey.of(modelDep.getGroupId(), modelDep.getArtifactId(), modelDep.getClassifier(),
@@ -144,7 +143,7 @@ public class AttachPluginMojo extends AbstractMojo {
         try {
             ModelUtils.persistModel(generatedPom, generatedModel);
         } catch (IOException e) {
-            throw new MojoExecutionException("Failed to persiste POM at " + generatedPom, e);
+            throw new MojoExecutionException("Failed to persist POM at " + generatedPom, e);
         }
 
         project.setPomFile(generatedPom.toFile());
@@ -173,11 +172,11 @@ public class AttachPluginMojo extends AbstractMojo {
     private Set<ArtifactKey> getManagedKeys() {
         final DependencyManagement dm = project.getDependencyManagement();
         if (dm == null) {
-            return Collections.emptySet();
+            return Set.of();
         }
         final List<org.apache.maven.model.Dependency> deps = dm.getDependencies();
         if (deps.isEmpty()) {
-            return Collections.emptySet();
+            return Set.of();
         }
         final Set<ArtifactKey> keys = new HashSet<>(deps.size());
         for (org.apache.maven.model.Dependency d : deps) {

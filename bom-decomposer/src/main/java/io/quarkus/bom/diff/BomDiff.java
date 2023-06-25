@@ -6,9 +6,13 @@ import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.bootstrap.resolver.maven.workspace.LocalProject;
+import io.quarkus.maven.dependency.ArtifactCoords;
 import io.quarkus.maven.dependency.ArtifactKey;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,25 +95,44 @@ public class BomDiff {
         }
 
         private ArtifactDescriptorResult descriptor(Path pom) {
-
-            final MavenArtifactResolver.Builder resolverBuilder = MavenArtifactResolver.builder()
-                    .setCurrentProject(pom.normalize().toAbsolutePath().toString());
-            if (resolver != null) {
-                final MavenArtifactResolver baseResolver = resolver.underlyingResolver();
-                resolverBuilder.setRepositorySystem(baseResolver.getSystem())
-                        .setRemoteRepositoryManager(baseResolver.getRemoteRepositoryManager());
+            pom = pom.normalize().toAbsolutePath();
+            MavenArtifactResolver underlyingResolver = null;
+            final MavenArtifactResolver baseResolver = resolver == null ? null : resolver.underlyingResolver();
+            if (baseResolver != null) {
+                var ws = baseResolver.getMavenContext().getWorkspace();
+                if (ws != null) {
+                    var pomDir = pom.getParent();
+                    for (var project : ws.getProjects().values()) {
+                        try {
+                            if (pomDir == null && project.getDir() == null
+                                    || pomDir != null && Files.isSameFile(pomDir, project.getDir())) {
+                                underlyingResolver = baseResolver;
+                                break;
+                            }
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
+                }
             }
-            MavenArtifactResolver underlyingResolver;
-            try {
-                underlyingResolver = resolverBuilder.build();
-            } catch (BootstrapMavenException e) {
-                throw new RuntimeException("Failed to initialize Maven artifact resolver for " + pom, e);
+            if (underlyingResolver == null) {
+                final MavenArtifactResolver.Builder resolverBuilder = MavenArtifactResolver.builder()
+                        .setCurrentProject(pom.toString());
+                if (baseResolver != null) {
+                    resolverBuilder.setRepositorySystem(baseResolver.getSystem())
+                            .setRemoteRepositoryManager(baseResolver.getRemoteRepositoryManager());
+                }
+                try {
+                    underlyingResolver = resolverBuilder.build();
+                } catch (BootstrapMavenException e) {
+                    throw new RuntimeException("Failed to initialize Maven artifact resolver for " + pom, e);
+                }
             }
 
             final BootstrapMavenContext mvnCtx = underlyingResolver.getMavenContext();
             final LocalProject bomProject = mvnCtx.getCurrentProject();
-            Artifact pomArtifact = new DefaultArtifact(bomProject.getGroupId(), bomProject.getArtifactId(), "", "pom",
-                    bomProject.getVersion());
+            Artifact pomArtifact = new DefaultArtifact(bomProject.getGroupId(), bomProject.getArtifactId(),
+                    ArtifactCoords.DEFAULT_CLASSIFIER, ArtifactCoords.TYPE_POM, bomProject.getVersion());
             pomArtifact = pomArtifact.setFile(pom.toFile());
 
             return ArtifactResolverProvider.get(underlyingResolver, resolver.getBaseDir()).describe(pomArtifact);

@@ -12,6 +12,7 @@ import io.quarkus.bom.decomposer.ProjectDependency;
 import io.quarkus.bom.decomposer.ProjectRelease;
 import io.quarkus.bom.decomposer.maven.GenerateMavenRepoZip;
 import io.quarkus.bom.decomposer.maven.MojoMessageWriter;
+import io.quarkus.bom.decomposer.maven.QuarkusWorkspaceProvider;
 import io.quarkus.bom.decomposer.maven.util.Utils;
 import io.quarkus.bom.diff.BomDiff;
 import io.quarkus.bom.diff.HtmlBomDiffReportGenerator;
@@ -21,6 +22,7 @@ import io.quarkus.bom.resolver.ArtifactResolver;
 import io.quarkus.bom.resolver.ArtifactResolverProvider;
 import io.quarkus.bom.resolver.EffectiveModelResolver;
 import io.quarkus.bootstrap.BootstrapConstants;
+import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.bootstrap.resolver.maven.workspace.ModelUtils;
@@ -154,6 +156,9 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
 
     @Parameter(property = "recordUpdatedBoms")
     private boolean recordUpdatedBoms;
+
+    @Component
+    QuarkusWorkspaceProvider workspaceProvider;
 
     Artifact universalBom;
     MavenArtifactResolver nonWorkspaceResolver;
@@ -2894,17 +2899,11 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         if (mavenResolver != null) {
             return mavenResolver;
         }
-        try {
-            return mavenResolver = MavenArtifactResolver.builder()
-                    .setRepositorySystem(repoSystem)
-                    .setRepositorySystemSession(repoSession)
-                    .setRemoteRepositories(repos)
-                    .setRemoteRepositoryManager(remoteRepoManager)
-                    .setCurrentProject(new File(outputDir, POM_XML).toString())
-                    .build();
-        } catch (BootstrapMavenException e) {
-            throw new MojoExecutionException("Failed to initialize Maven artifact resolver", e);
-        }
+        return workspaceProvider.createArtifactResolver(
+                BootstrapMavenContext.config()
+                        .setRemoteRepositories(repos)
+                        .setCurrentProject(new File(outputDir, POM_XML).toString())
+                        .setPreferPomsFromWorkspace(true));
     }
 
     private class PlatformMemberImpl implements PlatformMember {

@@ -1,6 +1,6 @@
 package io.quarkus.bom.decomposer.maven;
 
-import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
+import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.domino.ProductInfoImpl;
 import io.quarkus.domino.ProjectDependencyConfig;
@@ -203,21 +203,18 @@ public class NonQuarkusDepsToBuildMojo extends AbstractMojo {
     @Parameter(required = false)
     ProductInfoImpl.Builder productInfo;
 
+    @Component
+    QuarkusWorkspaceProvider workspaceProvider;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
 
-        MavenArtifactResolver resolver;
-        try {
-            resolver = MavenArtifactResolver.builder()
-                    .setRemoteRepositories(repos)
-                    .setRemoteRepositoryManager(remoteRepoManager)
-                    .setWorkspaceDiscovery(projectFile != null)
-                    .setPreferPomsFromWorkspace(projectFile != null)
-                    .setCurrentProject(projectFile == null ? null : projectFile.toString())
-                    .build();
-        } catch (BootstrapMavenException e) {
-            throw new MojoExecutionException("Failed to initialize Maven artifact resolver", e);
-        }
+        final MavenArtifactResolver resolver = workspaceProvider.createArtifactResolver(
+                BootstrapMavenContext.config()
+                        .setRemoteRepositories(repos)
+                        .setWorkspaceDiscovery(projectFile != null)
+                        .setPreferPomsFromWorkspace(projectFile != null)
+                        .setCurrentProject(projectFile == null ? null : projectFile.toString()));
 
         final ProjectDependencyResolver.Builder builder = ProjectDependencyResolver.builder()
                 .setArtifactResolver(resolver)
