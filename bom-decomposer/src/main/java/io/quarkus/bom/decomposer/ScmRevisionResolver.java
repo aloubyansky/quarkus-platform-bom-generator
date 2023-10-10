@@ -21,7 +21,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
 import org.apache.maven.model.Model;
-import org.apache.maven.model.resolution.UnresolvableModelException;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.repository.RemoteRepository;
 
@@ -68,8 +67,7 @@ public class ScmRevisionResolver {
         this.log = log;
     }
 
-    public ScmRevision resolveRevision(Artifact artifact, List<RemoteRepository> repos)
-            throws BomDecomposerException, UnresolvableModelException {
+    public ScmRevision resolveRevision(Artifact artifact, List<RemoteRepository> repos) throws BomDecomposerException {
         var gav = new GAV(artifact.getGroupId(), artifact.getArtifactId(), artifact.getVersion());
         var releaseId = releaseIdCache.get(gav);
         if (releaseId == null) {

@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.ServiceLoader;
 import org.apache.maven.model.DistributionManagement;
 import org.apache.maven.model.Model;
-import org.apache.maven.model.resolution.UnresolvableModelException;
 import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.project.ProjectModelResolver;
 import org.eclipse.aether.RequestTrace;
@@ -191,7 +190,7 @@ public class BomDecomposer {
                 bomBuilder.bomDependency(revisionResolver.resolveRevision(artifact, List.of()), dep);
             } catch (BomDecomposerException e) {
                 throw e;
-            } catch (ArtifactNotFoundException | UnresolvableModelException e) {
+            } catch (ArtifactNotFoundException e) {
                 // there are plenty of BOMs that include artifacts that don't exist
                 logger().debug("Failed to resolve %s", dep);
             }
