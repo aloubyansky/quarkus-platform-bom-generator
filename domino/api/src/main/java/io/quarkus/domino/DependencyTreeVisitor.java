@@ -1,5 +1,7 @@
 package io.quarkus.domino;
 
+import io.quarkus.bom.decomposer.ScmRevisionResolver;
+import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.domino.scm.ScmRevision;
 import io.quarkus.maven.dependency.ArtifactCoords;
 import java.util.List;
@@ -18,7 +20,16 @@ public interface DependencyTreeVisitor {
         boolean isManaged();
     }
 
-    void beforeAllRoots();
+    interface VisitorInitializationContext {
+
+        ProjectDependencyConfig getConfig();
+
+        MavenArtifactResolver getArtifactResolver();
+
+        ScmRevisionResolver getScmRevisionResolver();
+    }
+
+    void beforeAllRoots(VisitorInitializationContext initCtx);
 
     void afterAllRoots();
 

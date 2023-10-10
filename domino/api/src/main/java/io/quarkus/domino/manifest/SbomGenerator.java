@@ -1,5 +1,6 @@
 package io.quarkus.domino.manifest;
 
+import io.quarkus.bom.decomposer.ScmRevisionResolver;
 import io.quarkus.bom.resolver.EffectiveModelResolver;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
@@ -89,6 +90,12 @@ public class SbomGenerator {
             return this;
         }
 
+        public Builder setScmRevisionResolver(ScmRevisionResolver revisionResolver) {
+            ensureNotBuilt();
+            SbomGenerator.this.revisionResolver = revisionResolver;
+            return this;
+        }
+
         public SbomGenerator build() {
             ensureNotBuilt();
 
@@ -123,6 +130,7 @@ public class SbomGenerator {
     private ProductInfo productInfo;
     private boolean enableTransformers;
     private List<VisitedComponent> topComponents;
+    private ScmRevisionResolver revisionResolver;
 
     private Bom bom;
     private Set<String> addedBomRefs;
@@ -313,7 +321,7 @@ public class SbomGenerator {
         if (enableTransformers) {
             final Iterator<SbomTransformer> i = ServiceLoader.load(SbomTransformer.class).iterator();
             if (i.hasNext()) {
-                final SbomTransformContextImpl ctx = new SbomTransformContextImpl(bom);
+                final SbomTransformContextImpl ctx = new SbomTransformContextImpl(bom, revisionResolver);
                 while (i.hasNext()) {
                     Bom transformed = i.next().transform(ctx);
                     if (transformed != null) {
@@ -408,7 +416,7 @@ public class SbomGenerator {
     }
 
     private static List<VisitedComponent> sortAlphabetically(List<VisitedComponent> col) {
-        Collections.sort(col, (o1, o2) -> {
+        col.sort((o1, o2) -> {
             var coords1 = o1.getArtifactCoords();
             var coords2 = o2.getArtifactCoords();
             int i = coords1.getGroupId().compareTo(coords2.getGroupId());

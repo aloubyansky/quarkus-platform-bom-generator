@@ -1,6 +1,5 @@
 package io.quarkus.domino.manifest;
 
-import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.bootstrap.resolver.maven.workspace.LocalProject;
 import io.quarkus.domino.DependencyTreeVisitor;
 import io.quarkus.domino.ProductInfo;
@@ -24,34 +23,25 @@ public class SbomGeneratingDependencyVisitor implements DependencyTreeVisitor {
 
     private final boolean validateSbomTrees = Boolean.parseBoolean(System.getProperty(DOMINO_VALIDATE_SBOM_TREES));
     private final TreeRecorder validatingTreeRecorder = validateSbomTrees ? new TreeRecorder() : null;
-    private final ProjectDependencyConfig config;
+    private ProjectDependencyConfig config;
 
-    public SbomGeneratingDependencyVisitor(MavenArtifactResolver resolver, Path outputFile, ProjectDependencyConfig config,
-            boolean enableSbomTransformers) {
+    public SbomGeneratingDependencyVisitor(Path outputFile, boolean enableSbomTransformers) {
         sbomGenerator = SbomGenerator.builder()
-                .setArtifactResolver(resolver)
-                .setOutputFile(outputFile);
-        if (config.getProductInfo() != null) {
-            sbomGenerator.setProductInfo(config.getProductInfo());
-        }
-        this.config = config;
-    }
-
-    public SbomGeneratingDependencyVisitor(MavenArtifactResolver resolver, Path outputFile, ProductInfo productInfo,
-            boolean enableSbomTransformers) {
-        sbomGenerator = SbomGenerator.builder()
-                .setArtifactResolver(resolver)
                 .setOutputFile(outputFile)
-                .setProductInfo(productInfo);
-        config = null;
+                .setEnableTransformers(enableSbomTransformers);
     }
 
     @Override
-    public void beforeAllRoots() {
-        treeBuilder.beforeAllRoots();
+    public void beforeAllRoots(VisitorInitializationContext initCtx) {
+        treeBuilder.beforeAllRoots(initCtx);
         if (validatingTreeRecorder != null) {
-            validatingTreeRecorder.beforeAllRoots();
+            validatingTreeRecorder.beforeAllRoots(initCtx);
         }
+        this.config = initCtx.getConfig();
+        sbomGenerator
+                .setProductInfo(config == null ? null : config.getProductInfo())
+                .setArtifactResolver(initCtx.getArtifactResolver())
+                .setScmRevisionResolver(initCtx.getScmRevisionResolver());
     }
 
     @Override

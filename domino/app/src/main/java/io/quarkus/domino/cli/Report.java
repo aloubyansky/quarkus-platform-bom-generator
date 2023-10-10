@@ -52,9 +52,7 @@ public class Report extends BaseDepsToBuildCommand {
             resolverBuilder.setLogOutputFile(null);
         }
         if (manifest) {
-            resolverBuilder.addDependencyTreeVisitor(
-                    new SbomGeneratingDependencyVisitor(getArtifactResolver(),
-                            outputFile, resolverBuilder.getDependencyConfig().getProductInfo(), enableSbomTransformers));
+            resolverBuilder.addDependencyTreeVisitor(new SbomGeneratingDependencyVisitor(outputFile, enableSbomTransformers));
         }
     }
 

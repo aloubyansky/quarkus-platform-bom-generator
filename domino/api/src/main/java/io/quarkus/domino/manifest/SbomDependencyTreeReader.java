@@ -21,7 +21,7 @@ class SbomDependencyTreeReader {
     static List<TreeNode> readTrees(Bom bom, List<String> rootBomRefs) {
         var bomData = new BomData(bom);
         final TreeRecorder treeRecorder = new TreeRecorder();
-        treeRecorder.beforeAllRoots();
+        treeRecorder.beforeAllRoots(null);
 
         for (Component c : bom.getComponents()) {
             if (rootBomRefs.contains(c.getBomRef())) {

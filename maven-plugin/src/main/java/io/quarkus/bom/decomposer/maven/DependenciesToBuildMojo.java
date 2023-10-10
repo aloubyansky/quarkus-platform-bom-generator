@@ -330,9 +330,8 @@ public class DependenciesToBuildMojo extends AbstractMojo {
                 .setDependencyConfig(dependencyConfig);
 
         if (manifest) {
-            var sbomGenerator = new SbomGeneratingDependencyVisitor(resolver,
+            var sbomGenerator = new SbomGeneratingDependencyVisitor(
                     outputFile == null ? null : outputFile.toPath(),
-                    dependencyConfig,
                     true);
             depsResolver.addDependencyTreeVisitor(sbomGenerator).build().resolveDependencies();
         } else if (flatManifest) {

@@ -27,7 +27,7 @@ public class LoggingDependencyTreeVisitor implements DependencyTreeVisitor {
     }
 
     @Override
-    public void beforeAllRoots() {
+    public void beforeAllRoots(VisitorInitializationContext initCtx) {
     }
 
     @Override

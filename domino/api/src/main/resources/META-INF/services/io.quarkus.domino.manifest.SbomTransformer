@@ -1,1 +1,2 @@
 io.quarkus.domino.manifest.PncSbomTransformer
+io.quarkus.domino.manifest.UpstreamScmSbomTransformer

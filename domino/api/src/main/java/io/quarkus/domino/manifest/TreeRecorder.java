@@ -15,7 +15,7 @@ class TreeRecorder implements DependencyTreeVisitor {
     private ArrayDeque<TreeNode> branch;
 
     @Override
-    public void beforeAllRoots() {
+    public void beforeAllRoots(VisitorInitializationContext initCtx) {
         roots = new ArrayList<>();
         branch = new ArrayDeque<>();
         counter = 0;

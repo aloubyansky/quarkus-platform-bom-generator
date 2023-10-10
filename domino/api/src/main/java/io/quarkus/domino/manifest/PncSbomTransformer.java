@@ -25,8 +25,14 @@ public class PncSbomTransformer implements SbomTransformer {
 
     private final PncBuildInfoProvider pncInfoProvider = new PncBuildInfoProvider();
 
+    private final boolean enabled = false;
+
     @Override
     public Bom transform(SbomTransformContext ctx) {
+        if (!enabled) {
+            return ctx.getOriginalBom();
+        }
+
         log.debug("Adding PNC build info to the manifest");
         final Bom bom = ctx.getOriginalBom();
         final Component product = bom.getMetadata() == null ? null : bom.getMetadata().getComponent();

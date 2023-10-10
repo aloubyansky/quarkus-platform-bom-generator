@@ -2,6 +2,7 @@ package io.quarkus.domino.manifest;
 
 import com.github.packageurl.MalformedPackageURLException;
 import com.github.packageurl.PackageURL;
+import io.quarkus.bom.decomposer.ScmRevisionResolver;
 import io.quarkus.bom.resolver.EffectiveModelResolver;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
@@ -187,7 +188,7 @@ public class ManifestGenerator {
             }
         }
         if (!transformers.isEmpty()) {
-            final SbomTransformContextImpl ctx = new SbomTransformContextImpl(bom);
+            final SbomTransformContextImpl ctx = new SbomTransformContextImpl(bom, null);
             for (SbomTransformer t : transformers) {
                 Bom transformed = t.transform(ctx);
                 if (transformed != null) {
@@ -339,15 +340,22 @@ public class ManifestGenerator {
 
     static class SbomTransformContextImpl implements SbomTransformContext {
 
+        final ScmRevisionResolver revisionResolver;
         Bom bom;
 
-        SbomTransformContextImpl(Bom bom) {
+        SbomTransformContextImpl(Bom bom, ScmRevisionResolver revisionResolver) {
+            this.revisionResolver = revisionResolver;
             this.bom = bom;
         }
 
         @Override
         public Bom getOriginalBom() {
             return bom;
+        }
+
+        @Override
+        public ScmRevisionResolver getRevisionResolver() {
+            return revisionResolver;
         }
     }
 }

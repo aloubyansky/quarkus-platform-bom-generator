@@ -250,11 +250,12 @@ public class NonQuarkusDepsToBuildMojo extends AbstractMojo {
                         .setWarnOnResolutionErrors(warnOnResolutionErrors)
                         .setWarnOnMissingScm(warnOnMissingScm)
                         .setIncludeOptionalDeps(includeOptionalDeps)
-                        .setRecipeRepos(this.recipeRepos == null ? List.of() : this.recipeRepos));
+                        .setRecipeRepos(this.recipeRepos == null ? List.of() : this.recipeRepos)
+                        .setProductInfo(productInfo)
+                        .build());
         if (manifest) {
             builder.addDependencyTreeVisitor(
-                    new SbomGeneratingDependencyVisitor(resolver, outputFile == null ? null : outputFile.toPath(), productInfo,
-                            true))
+                    new SbomGeneratingDependencyVisitor(outputFile == null ? null : outputFile.toPath(), false))
                     .build().resolveDependencies();
         } else {
             builder.build().log();

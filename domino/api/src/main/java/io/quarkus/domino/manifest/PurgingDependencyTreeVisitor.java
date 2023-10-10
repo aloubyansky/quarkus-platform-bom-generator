@@ -28,7 +28,7 @@ public class PurgingDependencyTreeVisitor implements DependencyTreeVisitor {
     private Map<ArtifactCoords, List<VisitedComponentImpl>> nodeVariations;
 
     @Override
-    public void beforeAllRoots() {
+    public void beforeAllRoots(VisitorInitializationContext initCtx) {
         nodesTotal.set(0);
         uniqueNodesTotal.set(0);
         roots = new ArrayList<>();
@@ -41,7 +41,7 @@ public class PurgingDependencyTreeVisitor implements DependencyTreeVisitor {
         purge();
     }
 
-    public List<VisitedComponent> getRoots() {
+    List<VisitedComponent> getRoots() {
         return new ArrayList<>(roots);
     }
 
@@ -208,13 +208,12 @@ public class PurgingDependencyTreeVisitor implements DependencyTreeVisitor {
             if (children.size() != other.children.size()) {
                 return false;
             }
-            for (Map.Entry<ArtifactCoords, VisitedComponentImpl> c : children.entrySet()) {
-                var child = c.getValue();
+            for (var child : children.values()) {
                 if (child.bomRef == null) {
                     throw new IllegalStateException(
                             coords + " node has not yet processed dependency on " + child.getArtifactCoords());
                 }
-                var otherChild = other.children.get(c.getKey());
+                var otherChild = other.children.get(child.coords);
                 if (otherChild == null) {
                     return false;
                 }
