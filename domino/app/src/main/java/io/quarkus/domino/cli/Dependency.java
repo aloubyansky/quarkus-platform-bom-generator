@@ -35,15 +35,15 @@ import picocli.CommandLine;
 public class Dependency implements Callable<Integer> {
 
     @CommandLine.Option(names = {
-            "--bom" }, description = "Maven BOM dependency constraints of which should be resolved including their dependencies.", required = false)
+            "--bom" }, description = "Maven BOM dependency constraints of which should be processed as root artifacts.", required = false)
     protected String bom;
 
     @CommandLine.Option(names = {
-            "--roots" }, description = "Maven artifacts whose dependencies should be resolved", required = false, split = ",")
+            "--roots" }, description = "Maven artifacts whose dependencies should be processed", required = false, split = ",")
     protected List<String> roots = List.of();
 
     @CommandLine.Option(names = {
-            "--versions" }, description = "Limit artifact versions to those matching specified glob patterns", split = ",")
+            "--versions" }, description = "Limit root artifact versions to those matching specified glob patterns", split = ",")
     protected List<String> versions = List.of();
     private List<Pattern> versionPatterns;
 
