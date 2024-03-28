@@ -659,7 +659,7 @@ public class ProjectDependencyResolver {
             final BuildTool buildTool = BuildTool.forProjectDir(config.getProjectDir());
             if (BuildTool.MAVEN.equals(buildTool)) {
                 var ws = resolver.getMavenContext().getWorkspace();
-                result = MavenProjectReader.resolveModuleDependencies(ws);
+                result = MavenProjectReader.resolveModuleDependencies(ws, config.getProjectDir());
                 if (!result.isEmpty()) {
                     final List<Path> createdDirs = new ArrayList<>(ws.getProjects().size());
                     for (var project : resolver.getMavenContext().getWorkspace().getProjects().values()) {
@@ -680,12 +680,9 @@ public class ProjectDependencyResolver {
                         }
                     }
                     if (!createdDirs.isEmpty()) {
-                        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-                            @Override
-                            public void run() {
-                                for (Path p : createdDirs) {
-                                    IoUtils.recursiveDelete(p);
-                                }
+                        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                            for (Path p : createdDirs) {
+                                IoUtils.recursiveDelete(p);
                             }
                         }));
                     }
