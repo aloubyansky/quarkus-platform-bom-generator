@@ -42,6 +42,7 @@ import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenException;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.bootstrap.resolver.maven.workspace.ModelUtils;
+import io.quarkus.bootstrap.util.BootstrapUtils;
 import io.quarkus.bootstrap.util.IoUtils;
 import io.quarkus.domino.ArtifactCoordsPattern;
 import io.quarkus.domino.DominoInfo;
@@ -64,6 +65,7 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -77,8 +79,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Queue;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -249,8 +253,8 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
 
     private List<Profile> generatedBomReleaseProfile;
 
-    private final Map<ArtifactKey, ResolvedExtensionInfo> resolvedExtensionInfoCache = new HashMap<>();
-    private final Map<PlatformMemberConfig, List<ExtensionCatalog>> memberMetadataCatalogsCache = new HashMap<>();
+    private final Map<ArtifactKey, ResolvedExtensionInfo> resolvedExtensionInfoCache = new ConcurrentHashMap<>();
+    private Map<ArtifactKey, PlatformExtension> platformExtensionsIndex;
 
     private boolean isClean() {
         final List<String> goals;
@@ -469,7 +473,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         final SbomerGlobalConfig globalSbomerConfig = platformConfig.getSbomer();
         List<Pattern> extensionSupportPatterns = null;
         SbomerConfig sbomerConfig = null;
-        for (PlatformMember member : members.values()) {
+        for (PlatformMemberImpl member : members.values()) {
             if (!member.config().isEnabled() || member.config().isHidden()) {
                 continue;
             }
@@ -534,7 +538,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
 
             Set<ArtifactKey> selectedKeys = Set.of();
             if (sbomConfig != null && sbomConfig.isSupportedExtensionsOnly()) {
-                var catalogs = loadMetadataOverrideCatalogs(member.config());
+                var catalogs = loadMetadataOverrideCatalogs(member);
                 if (catalogs.isEmpty()) {
                     throw new IllegalStateException("The SBOM generator for member " + member.config().getName()
                             + " is configured to include only supported extensions but no support metadata override sources were provided");
@@ -553,6 +557,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
                     }
                 }
             }
+            addDiscoveredConditionalExtensions(member, dominoConfig);
 
             try {
                 dominoConfig.build().persist(dominoManifestConfigFile.normalize().toAbsolutePath());
@@ -573,7 +578,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         if (supportPatterns.isEmpty()) {
             return;
         }
-        for (PlatformMember member : members.values()) {
+        for (PlatformMemberImpl member : members.values()) {
             if (!member.config().isEnabled() || member.config().isHidden()) {
                 continue;
             }
@@ -601,7 +606,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
             final List<ArtifactCoordsPattern> excludePatterns = ArtifactCoordsPattern
                     .toPatterns(dominoConfig.getExcludePatterns());
 
-            var catalogs = loadMetadataOverrideCatalogs(member.config());
+            var catalogs = loadMetadataOverrideCatalogs(member);
             if (catalogs.isEmpty()) {
                 throw new IllegalStateException("The SBOM generator for member " + member.config().getName()
                         + " is configured to include only supported extensions but no support metadata override sources were provided");
@@ -617,6 +622,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
                     }
                 }
             }
+            addDiscoveredConditionalExtensions(member, dominoConfig);
 
             try {
                 dominoConfig.build()
@@ -627,7 +633,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         }
     }
 
-    private static boolean isMatchesDominoBuildPattern(Extension extension, List<Pattern> patterns) {
+    private static boolean matchesMetadataPattern(Extension extension, List<Pattern> patterns) {
         for (var key : extension.getMetadata().keySet()) {
             for (var pattern : patterns) {
                 if (pattern.matcher(key).matches()) {
@@ -636,6 +642,10 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
             }
         }
         return false;
+    }
+
+    private static boolean hasOffering(Extension extension, String offering) {
+        return extension.getMetadata().containsKey(offering + "-support");
     }
 
     private void addExtensionArtifacts(Artifact a, ProjectDependencyConfig.Mutable dominoConfig) {
@@ -709,6 +719,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
             relocated = false;
         }
         final String[] deploymentCoords = { null };
+        final ArrayList<String> conditionalDeps = new ArrayList<>(0);
         final boolean[] hasDescriptor = { false };
         PathTree.ofArchive(resolved.getFile().toPath()).accept(BootstrapConstants.DESCRIPTOR_PATH, visit -> {
             if (visit != null) {
@@ -720,28 +731,37 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
                     throw new UncheckedIOException(e);
                 }
                 deploymentCoords[0] = props.getProperty(BootstrapConstants.PROP_DEPLOYMENT_ARTIFACT);
+                final String conditionalDepsProp = props.getProperty(BootstrapConstants.CONDITIONAL_DEPENDENCIES);
+                if (conditionalDepsProp != null) {
+                    final String[] arr = BootstrapUtils.splitByWhitespace(conditionalDepsProp);
+                    conditionalDeps.ensureCapacity(arr.length);
+                    for (String s : arr) {
+                        if (!s.isEmpty()) {
+                            conditionalDeps.add(s);
+                        }
+                    }
+                }
             }
         });
-        var info = new ResolvedExtensionInfo(resolved, relocated, hasDescriptor[0], deploymentCoords[0]);
+        var info = new ResolvedExtensionInfo(resolved, relocated, hasDescriptor[0], deploymentCoords[0], conditionalDeps);
         resolvedExtensionInfoCache.put(key, info);
         return info;
     }
 
-    private List<ExtensionCatalog> loadMetadataOverrideCatalogs(PlatformMemberConfig memberConfig)
+    private List<ExtensionCatalog> loadMetadataOverrideCatalogs(PlatformMemberImpl member)
             throws MojoExecutionException {
-        var cached = memberMetadataCatalogsCache.get(memberConfig);
-        if (cached != null) {
-            return cached;
+        if (member.metadataOverrideCatalogs != null) {
+            return member.metadataOverrideCatalogs;
         }
-        List<ExtensionCatalog> catalogs = new ArrayList<>();
-        for (String s : memberConfig.getMetadataOverrideFiles()) {
+        List<ExtensionCatalog> catalogs = new ArrayList<>(2);
+        for (String s : member.config().getMetadataOverrideFiles()) {
             try {
                 catalogs.add(ExtensionCatalog.fromFile(Path.of(s)));
             } catch (IOException e) {
                 throw new MojoExecutionException("Failed to deserialize " + s, e);
             }
         }
-        for (String s : memberConfig.getMetadataOverrideArtifacts()) {
+        for (String s : member.config().getMetadataOverrideArtifacts()) {
             try {
                 var path = getNonWorkspaceResolver().resolve(toAetherArtifact(s)).getArtifact().getFile().toPath();
                 catalogs.add(ExtensionCatalog.fromFile(path));
@@ -751,7 +771,7 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
                 throw new MojoExecutionException("Failed to deserialize " + s, e);
             }
         }
-        memberMetadataCatalogsCache.put(memberConfig, catalogs);
+        member.metadataOverrideCatalogs = catalogs;
         return catalogs;
     }
 
@@ -759,11 +779,24 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         final Set<ArtifactKey> selectedKeys = new HashSet<>();
         for (ExtensionCatalog c : catalogs) {
             for (var e : c.getExtensions()) {
-                if (isMatchesDominoBuildPattern(e, patterns)) {
+                if (matchesMetadataPattern(e, patterns)) {
                     var key = e.getArtifact().getKey();
                     selectedKeys.add(key);
                     selectedKeys.add(ArtifactKey.of(key.getGroupId(), key.getArtifactId() + "-deployment",
                             key.getClassifier(), key.getType()));
+                }
+            }
+        }
+        return selectedKeys;
+    }
+
+    private static Set<ArtifactKey> selectOfferingExtensionKeys(List<ExtensionCatalog> catalogs, String offering) {
+        final String supportKey = offering + "-support";
+        final Set<ArtifactKey> selectedKeys = new HashSet<>();
+        for (ExtensionCatalog c : catalogs) {
+            for (var e : c.getExtensions()) {
+                if (e.getMetadata().containsKey(supportKey)) {
+                    selectedKeys.add(e.getArtifact().getKey());
                 }
             }
         }
@@ -1059,6 +1092,174 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         return productConfig;
     }
 
+    private void addDiscoveredConditionalExtensions(PlatformMemberImpl member, ProjectDependencyConfig.Mutable dominoConfig) {
+        if (member.discoveredConditionalExtensions != null) {
+            for (Artifact a : member.discoveredConditionalExtensions) {
+                addExtensionArtifacts(a, dominoConfig);
+            }
+        }
+    }
+
+    private static class PlatformExtension {
+        final PlatformMemberImpl member;
+        final Extension extension;
+        final boolean hasOfferingWithCpe;
+
+        PlatformExtension(PlatformMemberImpl member, Extension extension, boolean hasOfferingWithCpe) {
+            this.member = member;
+            this.extension = extension;
+            this.hasOfferingWithCpe = hasOfferingWithCpe;
+        }
+    }
+
+    private synchronized Map<ArtifactKey, PlatformExtension> getPlatformExtensionsIndex()
+            throws MojoExecutionException {
+        if (platformExtensionsIndex != null) {
+            return platformExtensionsIndex;
+        }
+        final Map<ArtifactKey, PlatformExtension> index = new HashMap<>();
+        for (PlatformMemberImpl member : members.values()) {
+            final SbomConfig.ProductConfig productConfig = getProductConfig(member);
+            final String memberOffering = productConfig == null ? null : productConfig.getOffering();
+            final boolean memberHasCpe = productConfig != null && productConfig.getCpe() != null && memberOffering != null;
+            final List<ExtensionCatalog> catalogs = loadMetadataOverrideCatalogs(member);
+            for (ExtensionCatalog c : catalogs) {
+                for (Extension e : c.getExtensions()) {
+                    final boolean hasOfferingWithCpe = memberHasCpe && hasOffering(e, memberOffering);
+                    index.put(e.getArtifact().getKey(), new PlatformExtension(member, e, hasOfferingWithCpe));
+                }
+            }
+        }
+        platformExtensionsIndex = index;
+        return index;
+    }
+
+    private static ArtifactKey toArtifactKey(String str) {
+        if (str == null || str.isBlank()) {
+            return null;
+        }
+        int firstColon = str.indexOf(':');
+        if (firstColon <= 0) {
+            return null;
+        }
+        String groupId = str.substring(0, firstColon);
+        int secondColon = str.indexOf(':', firstColon + 1);
+        if (secondColon < 0) {
+            return ArtifactKey.of(groupId, str.substring(firstColon + 1));
+        }
+        String artifactId = str.substring(firstColon + 1, secondColon);
+        int thirdColon = str.indexOf(':', secondColon + 1);
+        if (thirdColon < 0) {
+            return ArtifactKey.of(groupId, artifactId);
+        }
+        int fourthColon = str.indexOf(':', thirdColon + 1);
+        if (fourthColon < 0) {
+            String type = str.substring(secondColon + 1, thirdColon);
+            return ArtifactKey.of(groupId, artifactId, ArtifactCoords.DEFAULT_CLASSIFIER,
+                    type.isEmpty() ? ArtifactCoords.TYPE_JAR : type);
+        }
+        String classifier = str.substring(secondColon + 1, thirdColon);
+        String type = str.substring(thirdColon + 1, fourthColon);
+        return ArtifactKey.of(groupId, artifactId, classifier,
+                type.isEmpty() ? ArtifactCoords.TYPE_JAR : type);
+    }
+
+    private static Artifact getPlatformArtifact(PlatformMemberImpl targetMember, ArtifactKey key,
+            PlatformExtension targetExt, List<org.eclipse.aether.graph.Dependency> enforcedConstraints) {
+        for (var d : enforcedConstraints) {
+            var a = d.getArtifact();
+            if (key.getGroupId().equals(a.getGroupId()) && key.getArtifactId().equals(a.getArtifactId())
+                    && key.getClassifier().equals(a.getClassifier()) && key.getType().equals(a.getExtension())) {
+                return a;
+            }
+        }
+        for (ProjectRelease r : targetMember.getAlignedDecomposedBom().releases()) {
+            for (ProjectDependency d : r.dependencies()) {
+                if (d.key().equals(key)) {
+                    return d.artifact();
+                }
+            }
+        }
+        var a = targetExt.extension.getArtifact();
+        return new DefaultArtifact(a.getGroupId(), a.getArtifactId(), a.getClassifier(), a.getType(), a.getVersion());
+    }
+
+    private Set<Artifact> discoverExtensionsToRecord(PlatformMemberImpl member,
+            Set<ArtifactKey> offeringKeys, Set<PlatformMemberImpl> additionalMembers)
+            throws MojoExecutionException {
+        final Map<ArtifactKey, PlatformExtension> platformExtensionsIndex = getPlatformExtensionsIndex();
+        final List<org.eclipse.aether.graph.Dependency> enforcedConstraints = getEnforcedConstraints(member);
+
+        final Map<ArtifactKey, Artifact> extensionsToRecord = new LinkedHashMap<>();
+        final Set<ArtifactKey> visited = new HashSet<>();
+        final Queue<String> conditionalQueue = new ArrayDeque<>();
+
+        for (ProjectRelease r : member.getAlignedDecomposedBom().releases()) {
+            for (ProjectDependency d : r.dependencies()) {
+                if (offeringKeys.contains(d.key())) {
+                    final Artifact a = d.artifact();
+                    visited.add(d.key());
+                    extensionsToRecord.put(d.key(), a);
+                    final ResolvedExtensionInfo info = resolveExtension(a);
+                    if (info.isExtension && !info.conditionalDeps.isEmpty()) {
+                        conditionalQueue.addAll(info.conditionalDeps);
+                    }
+                }
+            }
+        }
+
+        if (conditionalQueue.isEmpty()) {
+            return new LinkedHashSet<>(extensionsToRecord.values());
+        }
+
+        final Set<Artifact> discoveredConditionals = new LinkedHashSet<>();
+
+        while (!conditionalQueue.isEmpty()) {
+            final String condDepStr = conditionalQueue.poll();
+            final ArtifactKey condKey = toArtifactKey(condDepStr);
+            if (condKey == null || !visited.add(condKey)) {
+                continue;
+            }
+            final PlatformExtension targetExt = platformExtensionsIndex.get(condKey);
+            if (targetExt == null) {
+                // Extensions that aren't found in platform member catalogs shouldn't be analyzed for now
+                continue;
+            }
+            if (targetExt.member == member) {
+                if (offeringKeys.contains(condKey)) {
+                    // Already an offering extension of this member
+                    continue;
+                }
+            } else {
+                if (targetExt.hasOfferingWithCpe) {
+                    // Associated with an offering with a CPE -> skipped for this member
+                    continue;
+                }
+                getLog().warn("Conditional extension dependency " + condKey
+                        + " from member " + targetExt.member.config().getName()
+                        + " is not associated with an offering with a CPE; adding it to "
+                        + member.config().getName() + "'s cpe-artifacts");
+                additionalMembers.add(targetExt.member);
+            }
+
+            final Artifact condArtifact = getPlatformArtifact(targetExt.member, condKey, targetExt, enforcedConstraints);
+            if (condArtifact != null) {
+                extensionsToRecord.put(condKey, condArtifact);
+                discoveredConditionals.add(condArtifact);
+                final ResolvedExtensionInfo condInfo = resolveExtension(condArtifact);
+                if (condInfo.isExtension && !condInfo.conditionalDeps.isEmpty()) {
+                    conditionalQueue.addAll(condInfo.conditionalDeps);
+                }
+            }
+        }
+
+        if (!discoveredConditionals.isEmpty()) {
+            member.discoveredConditionalExtensions = discoveredConditionals;
+        }
+
+        return new LinkedHashSet<>(extensionsToRecord.values());
+    }
+
     /**
      * Collects the artifacts that should be attributed to a platform member's CPE, keyed by the member's
      * supported runtime extension artifacts.
@@ -1078,64 +1279,60 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
             throws MojoExecutionException {
         final Map<ArtifactCoords, List<ArtifactCoords>> result = new LinkedHashMap<>();
 
-        final List<ExtensionCatalog> catalogs = loadMetadataOverrideCatalogs(member.config());
+        final List<ExtensionCatalog> catalogs = loadMetadataOverrideCatalogs(member);
         if (catalogs.isEmpty()) {
             getLog().warn("No metadata override catalogs found for member " + member.config().getName()
                     + ", skipping CPE artifacts collection");
             return result;
         }
-        final Set<ArtifactKey> offeringKeys = selectExtensionKeys(catalogs,
-                compilePatterns(List.of(offering + "-support")));
+        final Set<ArtifactKey> offeringKeys = selectOfferingExtensionKeys(catalogs, offering);
         if (offeringKeys.isEmpty()) {
             return result;
         }
 
-        final var resolver = getNonWorkspaceResolver();
-        final List<org.eclipse.aether.graph.Dependency> enforcedConstraints = getEnforcedConstraints(member);
-        for (ProjectRelease r : member.getAlignedDecomposedBom().releases()) {
-            for (ProjectDependency d : r.dependencies()) {
-                final Artifact a = d.artifact();
-                if (!offeringKeys.contains(d.key())
-                        || !isExtensionCandidate(a, member.config().getExtensionGroupIds(), List.of())) {
-                    continue;
-                }
-                var info = resolveExtension(a);
-                if (!info.isExtension || info.deploymentArtifactCoords == null) {
-                    continue;
-                }
-                // key the map by the runtime extension artifact so the consumer can look it up directly
-                // against the runtime artifacts flagged in the ApplicationModel, without having to map
-                // runtime artifacts to their deployment counterparts itself
-                final Artifact runtime = info.resolved;
-                final ArtifactCoords runtimeCoords = ArtifactCoords.of(runtime.getGroupId(), runtime.getArtifactId(),
-                        runtime.getClassifier(), runtime.getExtension(), runtime.getVersion());
-                var deploymentCoords = ArtifactCoords.fromString(info.deploymentArtifactCoords);
-                try {
-                    var aetherArtifact = new DefaultArtifact(deploymentCoords.getGroupId(),
-                            deploymentCoords.getArtifactId(), deploymentCoords.getClassifier(),
-                            deploymentCoords.getType(), deploymentCoords.getVersion());
-                    // Add the deployment artifact as a direct dependency rather than the root so that
-                    // its own dependencies are scope-filtered by the session's ScopeDependencySelector
-                    // (which does not filter the root's direct dependencies).
-                    var collectRequest = new CollectRequest()
-                            .setDependencies(List.of(
-                                    new org.eclipse.aether.graph.Dependency(aetherArtifact, JavaScopes.COMPILE)))
-                            .setManagedDependencies(enforcedConstraints)
-                            .setRepositories(resolver.getRepositories());
-                    var collectResult = resolver.getSystem().collectDependencies(resolver.getSession(), collectRequest);
+        final Set<PlatformMemberImpl> additionalMembers = new HashSet<>();
+        final Set<Artifact> extensionsToRecord = discoverExtensionsToRecord(member, offeringKeys, additionalMembers);
 
-                    // the value is the deployment artifact itself plus its transitive closure
-                    final DependencyNode deploymentNode = collectResult.getRoot().getChildren().get(0);
-                    Set<ArtifactCoords> deps = new LinkedHashSet<>();
-                    deps.add(deploymentCoords);
-                    collectCpeTransitiveDeps(deploymentNode, deps);
-                    result.put(runtimeCoords, new ArrayList<>(deps));
-                } catch (DependencyCollectionException e) {
-                    throw new MojoExecutionException(
-                            "Failed to collect the dependencies of the supported extension deployment artifact "
-                                    + deploymentCoords,
-                            e);
-                }
+        final var resolver = getNonWorkspaceResolver();
+        final List<org.eclipse.aether.graph.Dependency> enforcedConstraints = getEnforcedConstraints(member,
+                additionalMembers);
+        for (Artifact a : extensionsToRecord) {
+            var info = resolveExtension(a);
+            if (!info.isExtension || info.deploymentArtifactCoords == null) {
+                continue;
+            }
+            // key the map by the runtime extension artifact so the consumer can look it up directly
+            // against the runtime artifacts flagged in the ApplicationModel, without having to map
+            // runtime artifacts to their deployment counterparts itself
+            final Artifact runtime = info.resolved;
+            final ArtifactCoords runtimeCoords = ArtifactCoords.of(runtime.getGroupId(), runtime.getArtifactId(),
+                    runtime.getClassifier(), runtime.getExtension(), runtime.getVersion());
+            var deploymentCoords = ArtifactCoords.fromString(info.deploymentArtifactCoords);
+            try {
+                var aetherArtifact = new DefaultArtifact(deploymentCoords.getGroupId(),
+                        deploymentCoords.getArtifactId(), deploymentCoords.getClassifier(),
+                        deploymentCoords.getType(), deploymentCoords.getVersion());
+                // Add the deployment artifact as a direct dependency rather than the root so that
+                // its own dependencies are scope-filtered by the session's ScopeDependencySelector
+                // (which does not filter the root's direct dependencies).
+                var collectRequest = new CollectRequest()
+                        .setDependencies(List.of(
+                                new org.eclipse.aether.graph.Dependency(aetherArtifact, JavaScopes.COMPILE)))
+                        .setManagedDependencies(enforcedConstraints)
+                        .setRepositories(resolver.getRepositories());
+                var collectResult = resolver.getSystem().collectDependencies(resolver.getSession(), collectRequest);
+
+                // the value is the deployment artifact itself plus its transitive closure
+                final DependencyNode deploymentNode = collectResult.getRoot().getChildren().get(0);
+                Set<ArtifactCoords> deps = new LinkedHashSet<>();
+                deps.add(deploymentCoords);
+                collectCpeTransitiveDeps(deploymentNode, deps);
+                result.put(runtimeCoords, new ArrayList<>(deps));
+            } catch (DependencyCollectionException e) {
+                throw new MojoExecutionException(
+                        "Failed to collect the dependencies of the supported extension deployment artifact "
+                                + deploymentCoords,
+                        e);
             }
         }
         return result;
@@ -1160,10 +1357,20 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
      * constraints are enforced.
      */
     private List<org.eclipse.aether.graph.Dependency> getEnforcedConstraints(PlatformMemberImpl member) {
+        return getEnforcedConstraints(member, Set.of());
+    }
+
+    private List<org.eclipse.aether.graph.Dependency> getEnforcedConstraints(PlatformMemberImpl member,
+            Set<PlatformMemberImpl> additionalMembers) {
         final List<org.eclipse.aether.graph.Dependency> managed = new ArrayList<>();
         addAlignedConstraints(quarkusCore, managed);
         if (member != quarkusCore) {
             addAlignedConstraints(member, managed);
+        }
+        for (PlatformMemberImpl m : additionalMembers) {
+            if (m != quarkusCore && m != member) {
+                addAlignedConstraints(m, managed);
+            }
         }
         return managed;
     }
@@ -3431,13 +3638,15 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         final boolean relocated;
         final boolean isExtension;
         final String deploymentArtifactCoords;
+        final List<String> conditionalDeps;
 
         ResolvedExtensionInfo(Artifact resolved, boolean relocated, boolean isExtension,
-                String deploymentArtifactCoords) {
+                String deploymentArtifactCoords, List<String> conditionalDeps) {
             this.resolved = resolved;
             this.relocated = relocated;
             this.isExtension = isExtension;
             this.deploymentArtifactCoords = deploymentArtifactCoords;
+            this.conditionalDeps = conditionalDeps;
         }
     }
 
@@ -3458,6 +3667,8 @@ public class GeneratePlatformProjectMojo extends AbstractMojo {
         private Artifact prevBomRelease;
         private Boolean bomChanged;
         private List<org.eclipse.aether.graph.Dependency> inputConstraints;
+        private List<ExtensionCatalog> metadataOverrideCatalogs;
+        private Set<Artifact> discoveredConditionalExtensions;
 
         PlatformMemberImpl(PlatformMemberConfig config) {
             this.config = config;

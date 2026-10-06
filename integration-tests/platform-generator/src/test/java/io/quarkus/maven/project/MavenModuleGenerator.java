@@ -48,6 +48,7 @@ public class MavenModuleGenerator {
     private List<MavenPluginBuilder> plugins = List.of();
     private List<MavenPluginBuilder> managedPlugins = List.of();
     private List<Consumer<Path>> postGenerate = List.of();
+    private String conditionalDependencies;
 
     MavenModuleGenerator(String groupId, String artifactId, String version) {
         parent = null;
@@ -138,6 +139,9 @@ public class MavenModuleGenerator {
                 var props = new Properties();
                 props.setProperty(BootstrapConstants.PROP_DEPLOYMENT_ARTIFACT,
                         m.getGroupId() + ":" + m.getArtifactId() + "-deployment:" + m.getVersion());
+                if (m.conditionalDependencies != null && !m.conditionalDependencies.isBlank()) {
+                    props.setProperty(BootstrapConstants.CONDITIONAL_DEPENDENCIES, m.conditionalDependencies);
+                }
                 var metaInf = Files.createDirectories(
                         moduleDir.resolve("src").resolve("main").resolve("resources").resolve("META-INF"));
                 try (BufferedWriter writer = Files
@@ -148,6 +152,15 @@ public class MavenModuleGenerator {
                 throw new UncheckedIOException(e);
             }
         });
+    }
+
+    public MavenModuleGenerator addQuarkusExtensionRuntimeModule(String moduleName, String conditionalDependencies) {
+        return addQuarkusExtensionRuntimeModule(moduleName).setConditionalDependencies(conditionalDependencies);
+    }
+
+    public MavenModuleGenerator setConditionalDependencies(String conditionalDependencies) {
+        this.conditionalDependencies = conditionalDependencies;
+        return this;
     }
 
     public MavenModuleGenerator addPomModule(String moduleName) {
